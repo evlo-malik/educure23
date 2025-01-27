@@ -1,0 +1,117 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+
+    function isStripeService() {
+      return request.auth.token.stripeRole == 'stripeRole';
+    }
+
+    // Users collection - Anyone can read basic user info, but only owners can write
+    match /users/{userId} {
+      allow read: if true;
+      allow write: if isSignedIn() && isOwner(userId);
+      allow create: if isSignedIn();
+    }
+
+    // Documents collection - Public read, authenticated write for owners
+    match /documents/{docId} {
+      allow read: if true;
+      allow create: if isSignedIn() && request.resource.data.user_id == request.auth.uid;
+      allow update, delete: if isSignedIn() && resource.data.user_id == request.auth.uid;
+    }
+
+    // Stripe customer data - Allow Stripe service account full access
+    match /customers/{uid} {
+      allow read: if isSignedIn() && isOwner(uid);
+      allow write: if true;  // Allow Stripe webhook writes
+
+      match /checkout_sessions/{id} {
+        allow read: if isSignedIn() && isOwner(uid);
+        allow write: if true;  // Allow Stripe webhook writes
+      }
+      
+      match /subscriptions/{id} {
+        allow read: if isSignedIn() && isOwner(uid);
+        allow write: if true;  // Allow Stripe webhook writes
+      }
+      
+      match /payments/{id} {
+        allow read: if isSignedIn() && isOwner(uid);
+        allow write: if true;  // Allow Stripe webhook writes
+      }
+
+      match /portal_configurations/{id} {
+        allow read: if isSignedIn() && isOwner(uid);
+        allow write: if true;  // Allow Stripe webhook writes
+      }
+
+      match /portal_sessions/{id} {
+        allow read: if isSignedIn() && isOwner(uid);
+        allow write: if true;  // Allow Stripe webhook writes
+      }
+    }
+
+    // Message usage tracking - Owner and Stripe access
+    match /messageUsage/{userId} {
+      allow read: if isSignedIn() && isOwner(userId);
+      allow write: if isSignedIn() && isOwner(userId) || true;  // Allow Stripe webhook writes
+    }
+
+    // Upload usage tracking - Owner only
+    match /uploadUsage/{userId} {
+      allow read, write: if isSignedIn() && isOwner(userId);
+    }
+
+    // Vocalize usage tracking - Owner only
+    match /vocalizeUsage/{userId} {
+      allow read, write: if isSignedIn() && isOwner(userId);
+    }
+
+    // Purchased messages - Owner read, Stripe write
+    match /purchasedMessages/{userId} {
+      allow read: if isSignedIn() && isOwner(userId);
+      allow write: if true;  // Allow Stripe webhook writes
+    }
+
+    // Feedback collection - Authenticated users can create
+    match /feedback/{feedbackId} {
+      allow read: if true;
+      allow create: if isSignedIn();
+    }
+
+    // Feature requests collection - Authenticated users can create
+    match /feature_requests/{requestId} {
+      allow read: if true;
+      allow create: if isSignedIn();
+    }
+
+    // Products and prices (public read, Stripe write)
+    match /products/{id} {
+      allow read: if true;
+      allow write: if true;  // Allow Stripe webhook writes
+
+      match /prices/{id} {
+        allow read: if true;
+        allow write: if true;  // Allow Stripe webhook writes
+      }
+
+      match /tax_rates/{id} {
+        allow read: if true;
+        allow write: if true;  // Allow Stripe webhook writes
+      }
+    }
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

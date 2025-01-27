@@ -1,0 +1,110 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+
+    // User profiles - Allow read for all signed in users, write only for own profile
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isOwner(userId);
+      allow create: if isSignedIn();
+    }
+
+    // Customer data for Stripe
+    match /customers/{uid} {
+      allow read: if isSignedIn() && isOwner(uid);
+
+      match /checkout_sessions/{id} {
+        allow read, write: if isSignedIn() && isOwner(uid);
+      }
+      
+      match /subscriptions/{id} {
+        allow read: if isSignedIn() && isOwner(uid);
+      }
+      
+      match /payments/{id} {
+        allow read: if isSignedIn() && isOwner(uid);
+      }
+    }
+
+    // Documents collection - Allow users to manage their own documents
+    match /documents/{docId} {
+      allow create: if isSignedIn() && request.resource.data.user_id == request.auth.uid;
+      allow read, update, delete: if isSignedIn() && resource.data.user_id == request.auth.uid;
+      allow list: if isSignedIn();
+    }
+
+    // Feedback collection - Anyone signed in can create, only admins can read
+    match /feedback/{feedbackId} {
+      allow create: if isSignedIn();
+      allow read: if false; // Only admins can read feedback
+    }
+
+    // Feature requests collection - Same as feedback
+    match /feature_requests/{requestId} {
+      allow create: if isSignedIn();
+      allow read: if false; // Only admins can read feature requests
+    }
+
+    // Products and prices (public read)
+    match /products/{id} {
+      allow read: if true;
+
+      match /prices/{id} {
+        allow read: if true;
+      }
+
+      match /tax_rates/{id} {
+        allow read: if true;
+      }
+    }
+
+    // Chat messages
+    match /chat_messages/{messageId} {
+      allow read, write: if isSignedIn() && resource.data.user_id == request.auth.uid;
+      allow create: if isSignedIn();
+    }
+
+    // User settings
+    match /user_settings/{userId} {
+      allow read, write: if isSignedIn() && isOwner(userId);
+    }
+
+    // Message usage tracking
+    match /messageUsage/{userId} {
+      allow read: if isSignedIn() && isOwner(userId);
+      allow write: if isSignedIn() && isOwner(userId);
+    }
+
+    // Upload usage tracking
+    match /uploadUsage/{userId} {
+      allow read: if isSignedIn() && isOwner(userId);
+      allow write: if isSignedIn() && isOwner(userId);
+    }
+
+    // Vocalize usage tracking
+    match /vocalizeUsage/{userId} {
+      allow read: if isSignedIn() && isOwner(userId);
+      allow write: if isSignedIn() && isOwner(userId);
+    }
+
+    // Purchased messages
+    match /purchasedMessages/{userId} {
+      allow read: if isSignedIn() && isOwner(userId);
+      // Only allow writes through server functions
+      allow write: if false;
+    }
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
